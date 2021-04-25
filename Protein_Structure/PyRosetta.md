@@ -245,6 +245,161 @@ print("xyz coordinates:", tripeptide.residue(2).xyz("CB"))
 # xyz coordinates:       5.498535447297188       2.671616235800968     0.06968570437453583
 ```
 
+### Scoring
+
+```python
+import Bio.PDB.PDBList
+pdbfile = Bio.PDB.PDBList().retrieve_pdb_file(pdb_code="6Q21", pdir="/tmp") # /tmp/6q21.cif
+
+# 首先要Clean PDB，并且只保留其中一条链
+# pyrosetta.toolbox.cleanATOM(pdbfile, '/tmp/6q21.clean.pdb')
+
+scorefxn = get_fa_scorefxn()
+print(scorefxn) # 查看所有的参数
+type(scorefxn) # <class 'pyrosetta.rosetta.core.scoring.ScoreFunction'>
+```
+
+会输出一些信息：
+
+```
+weights: (fa_atr 1) (fa_rep 0.55) (fa_sol 1) (fa_intra_rep 0.005) (fa_intra_sol_xover4 1) (lk_ball_wtd 1) (fa_elec 1) (pro_close 1.25) (hbond_sr_bb 1) (hbond_lr_bb 1) (hbond_bb_sc 1) (hbond_sc 1) (dslf_fa13 1.25) (omega 0.4) (fa_dun 0.7) (p_aa_pp 0.6) (yhh_planarity 0.625) (ref 1) (rama_prepro 0.45)
+...
+EnergyMethodOptions::show: method_weights: ref 1.32468 3.25479 -2.14574 -2.72453 1.21829 0.79816 -0.30065 2.30374 -0.71458 1.66147 1.65735 -1.34026 -1.64321 -1.45095 -0.09474 -0.28969 1.15175 2.64269 2.26099 0.58223
+...
+HBondOptions::show: params_database_tag_: ref2015_params
+```
+
+[文件](https://graylab.jhu.edu/pyrosetta/downloads/documentation/PyRosetta_Workshops_Appendix_A.pdf)中记录了Rosetta中的一些打分项。
+
+| 缩写                                              | 适用   | 解释                                                         |
+| ------------------------------------------------- | ------ | ------------------------------------------------------------ |
+| fa_atr                                            | FA     | van der Waals net attractive energy                          |
+| fa_rep                                            | FA     | van der Waals net repulsive energy                           |
+| hbond_sr_bb, hbond_lr_bb                          | FA/CEN | Hydrogen-bonding energies, short and long-range, backbone–backbone |
+| fa_sol                                            | FA     | Solvation energies (Lazaridis–Karplus)                       |
+| fa_dun                                            | FA     | Dunbrack rotamer probability                                 |
+| fa_pair                                           | FA     | Statistical residue–residue pair potential                   |
+| fa_intra_rep                                      | FA     | Intraresidue repulsive Van der Waals energy                  |
+| fa_elec                                           | FA     | Distance-dependent dielectric electrostatics                 |
+| pro_close                                         | FA     | Proline ring closing energy                                  |
+| dslf_ss_dst, dslf_cs_ang,dslf_ss_dih, dslf_ca_dih | FA     | Disulfide statistical energies (S–S distance, etc.)          |
+| ref                                               | FA/CEN | Amino acid reference energy of unfolded state                |
+| p_aa_pp                                           | FA/CEN | Propensity of amino acid in (φ,ψ) bin, P(aa\|φ,ψ)            |
+| rama                                              | FA/CEN | Ramachandran propensities                                    |
+| vdw                                               | CEN    | van der Waals “bumps” (repulsive only)                       |
+| env                                               | CEN    | Residue environment score (statistical)                      |
+| Pair                                              | CEN    | Residue–residue pair score (statistical)                     |
+| cbeta                                             | CEN    | β-carbon score                                               |
+
+#### Custom score function
+
+自定义的打分函数只包含van der Waals, solvation, and  hydrogen bonding terms。
+
+```python
+scorefxn2 = ScoreFunction()
+scorefxn2.set_weight(pyrosetta.rosetta.core.scoring.ScoreType.fa_atr, 1.0)
+# van der Waals net attractive energy
+scorefxn2.set_weight(pyrosetta.rosetta.core.scoring.ScoreType.fa_rep, 1.0)
+# van der Waals net repulsive energy
+print(scorefxn2)
+# weights: (fa_atr 1) (fa_rep 1)
+```
+
+#### 评价PDB
+
+```python
+ras = pyrosetta.pose_from_pdb(pdbfile)
+ras.num_chains() # 8
+
+ras1 = ras.split_by_chain(1)
+print( len(ras1) ) # 172
+
+# 评价蛋白
+print( scorefxn(ras1) ) # 1208.9077245185017
+scorefxn.show(ras)
+```
+
+```
+core.scoring.ScoreFunction: 
+------------------------------------------------------------
+ Scores                       Weight   Raw Score Wghtd.Score
+------------------------------------------------------------
+ fa_atr                       1.000   -4465.653   -4465.653 van der Waals net attractive energy
+ fa_rep                       0.550    4531.534    2492.343 van der Waals net repulsive energy
+ fa_sol                       1.000    3153.321    3153.321 Solvation energies (Lazaridis–Karplus)
+ fa_intra_rep                 0.005    3064.638      15.323
+ fa_intra_sol_xover4          1.000     200.904     200.904
+ lk_ball_wtd                  1.000     -54.711     -54.711
+ fa_elec                      1.000   -1083.192   -1083.192 Distance-dependent dielectric electrostatics
+ pro_close                    1.250     270.565     338.206
+ hbond_sr_bb                  1.000    -181.224    -181.224
+ hbond_lr_bb                  1.000    -130.586    -130.586
+ hbond_bb_sc                  1.000     -73.431     -73.431
+ hbond_sc                     1.000     -53.769     -53.769
+ dslf_fa13                    1.250       0.000       0.000
+ omega                        0.400     149.145      59.658
+ fa_dun                       0.700    4635.733    3245.013 Dunbrack rotamer probability
+ p_aa_pp                      0.600    -101.427     -60.856
+ yhh_planarity                0.625       0.000       0.000
+ ref                          1.000     188.455     188.455
+ rama_prepro                  0.450     591.830     266.324
+---------------------------------------------------
+ Total weighted score:                     3856.128
+```
+
+显示unweighted energies：
+
+```python
+ras1.energies().show()
+ras1.energies().show(n) # 显示第n个残基的能量
+# core.scoring.Energies: E               fa_atr        fa_rep        fa_sol  fa_intra_repfa_intra_sol_x   lk_ball_wtd       fa_elec     pro_close   hbond_sr_bb   hbond_lr_bb   hbond_bb_sc      hbond_sc     dslf_fa13         omega        fa_dun       p_aa_pp yhh_planarity           ref   rama_prepro
+# core.scoring.Energies: E(i)   2         -5.10          1.82          4.05          0.83          0.04          0.04         -1.67          0.00          0.00          0.00          0.00          0.00          0.00          0.00          4.52         -0.34          0.00          1.15          0.09
+```
+
+范德华力和solvation都是原子-原子相互作用力，可以通过查表获得，与原子类型和距离相关：
+
+```python
+r1 = ras1.residue(24)
+r2 = ras1.residue(20)
+pyrosetta.etable_atom_pair_energies(r1, r1.atom_index('N'), r2, r2.atom_index('O'), scorefxn)
+# lj_atr, lj_rep, fa_solv, and fa_elec potentials
+# (-0.1505855046001568, 0.0, 0.5903452111877214, 2.173111777247698)
+```
+
+氢键
+
+```python
+hbond_set = pyrosetta.rosetta.core.scoring.hbonds.HBondSet()
+ras1.update_residue_neighbors()
+pyrosetta.rosetta.core.scoring.hbonds.fill_hbond_set(ras1, False, hbond_set)
+hbond_set.show(ras1, n) # n表示某个残基
+```
+
+```
+core.scoring.hbonds.HBondSet: #Dch Dn Dres Da  Ach An Ares Aa  length AHDang BAHang  BAtor weight energy
+core.scoring.hbonds.HBondSet: #A    2  THR  N  A   50  THR  O    2.01  158.3  155.0 -175.7  1.000 -1.342
+core.scoring.hbonds.HBondSet: #A   52  LEU  N  A    2  THR  O    1.59  171.0  149.6  134.7  1.000 -0.439
+core.scoring.hbonds.HBondSet: #A    4  TYR  N  A   52  LEU  O    1.71  146.0  157.4  151.1  1.000 -0.468
+...
+```
+
+存储分数：
+
+```python
+emap = pyrosetta.rosetta.core.scoring.EMapVector()
+scorefxn.eval_ci_2b(ras.residue(102), ras.residue(104), ras, emap)
+print(emap)
+print( emap[pyrosetta.rosetta.core.scoring.ScoreType.fa_atr] )
+```
+
+
+
+
+
+
+
+
+
 
 
 
